@@ -1,28 +1,24 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
-
-// NOTE: If you're using the Runway React SDK's AvatarCall component,
-// uncomment the import below and use Option A in the render.
 import { AvatarCall } from '@runwayml/avatars-react';
 import '@runwayml/avatars-react/styles.css';
 
-const SESSION_DURATION = 5 * 60; // 5 minutes in seconds
+const SESSION_DURATION = 5 * 60;
 
 export default function Session({ avatarId, survey, onSessionEnd }) {
   const [timeLeft, setTimeLeft] = useState(SESSION_DURATION);
-  const [status, setStatus] = useState('connecting'); // connecting | active | ending
+  const [status, setStatus] = useState('connecting');
   const [transcriptLines, setTranscriptLines] = useState([]);
   const recognitionRef = useRef(null);
   const timerRef = useRef(null);
   const transcriptRef = useRef([]);
   const sessionActiveRef = useRef(false);
 
-  // ─── Web Speech API transcript capture ───
   const startTranscription = useCallback(() => {
     const SpeechRecognition =
       window.SpeechRecognition || window.webkitSpeechRecognition;
 
     if (!SpeechRecognition) {
-      console.warn('Web Speech API not supported — transcript will be unavailable');
+      console.warn('Web Speech API not supported');
       return;
     }
 
@@ -46,7 +42,6 @@ export default function Session({ avatarId, survey, onSessionEnd }) {
 
     recognition.onerror = (event) => {
       console.warn('Speech recognition error:', event.error);
-      // Restart on recoverable errors
       if (event.error === 'no-speech' || event.error === 'aborted') {
         if (sessionActiveRef.current) {
           try { recognition.start(); } catch (e) { /* already running */ }
@@ -55,7 +50,6 @@ export default function Session({ avatarId, survey, onSessionEnd }) {
     };
 
     recognition.onend = () => {
-      // Auto-restart if session is still active
       if (sessionActiveRef.current) {
         try { recognition.start(); } catch (e) { /* already running */ }
       }
@@ -73,7 +67,6 @@ export default function Session({ avatarId, survey, onSessionEnd }) {
     }
   }, []);
 
-  // ─── Timer ───
   useEffect(() => {
     if (status !== 'active') return;
 
@@ -91,7 +84,6 @@ export default function Session({ avatarId, survey, onSessionEnd }) {
     return () => clearInterval(timerRef.current);
   }, [status]);
 
-  // ─── Session lifecycle ───
   const handleSessionReady = useCallback(() => {
     setStatus('active');
     sessionActiveRef.current = true;
@@ -104,12 +96,10 @@ export default function Session({ avatarId, survey, onSessionEnd }) {
     stopTranscription();
     clearInterval(timerRef.current);
 
-    // Build transcript string
     const fullTranscript = transcriptRef.current
       .map((line) => `${line.speaker}: ${line.text}`)
       .join('\n');
 
-    // Small delay to let final speech results come in
     setTimeout(() => {
       onSessionEnd(fullTranscript || '[No transcript captured — Web Speech API may not be supported in this browser]');
     }, 500);
@@ -119,7 +109,6 @@ export default function Session({ avatarId, survey, onSessionEnd }) {
     handleSessionComplete();
   }, [handleSessionComplete]);
 
-  // Cleanup on unmount
   useEffect(() => {
     return () => {
       stopTranscription();
@@ -127,7 +116,6 @@ export default function Session({ avatarId, survey, onSessionEnd }) {
     };
   }, [stopTranscription]);
 
-  // Format timer
   const minutes = Math.floor(timeLeft / 60);
   const seconds = timeLeft % 60;
   const timerStr = `${minutes}:${seconds.toString().padStart(2, '0')}`;
@@ -135,7 +123,6 @@ export default function Session({ avatarId, survey, onSessionEnd }) {
 
   return (
     <div className="screen session-screen">
-      {/* Timer bar */}
       <div className="session-timer-bar">
         <div className="timer-fill" style={{ width: `${timerPct}%` }} />
       </div>
@@ -147,43 +134,27 @@ export default function Session({ avatarId, survey, onSessionEnd }) {
         <div className="session-topic">{survey.topic}</div>
       </div>
 
-      {/* ─── Runway Avatar Area ─── */}
       <div className="session-avatar-area">
-          {status === 'connecting' && (
-            <div className="connecting-overlay">
-              <div className="scoring-spinner" />
-              <p>Connecting to The Bridge...</p>
-              <p className="connecting-hint">Make sure your microphone is enabled.</p>
-            </div>
-          )}
-
-<AvatarCall
-  avatarId={avatarId}
-  connectUrl="/api/create-session"
-  onConnect={handleSessionReady}
-  onEnd={handleSessionComplete}
-  onError={(err) => {
-    console.error('Avatar error:', err);
-    handleSessionComplete();
-  }}
-/>
-
-          ════════════════════════════════════════════════
-        */}
-
-        {status === 'active' && (
-          <div className="session-active-placeholder">
-            <div className="avatar-placeholder-ring">
-              <div className="avatar-placeholder-inner">
-                <span className="avatar-pulse" />
-              </div>
-            </div>
-            <p className="session-active-label">Session Active — Speak naturally</p>
+        {status === 'connecting' && (
+          <div className="connecting-overlay">
+            <div className="scoring-spinner" />
+            <p>Connecting to The Bridge...</p>
+            <p className="connecting-hint">Make sure your microphone is enabled.</p>
           </div>
         )}
+
+        <AvatarCall
+          avatarId={avatarId}
+          connectUrl="/api/create-session"
+          onConnect={handleSessionReady}
+          onEnd={handleSessionComplete}
+          onError={(err) => {
+            console.error('Avatar error:', err);
+            handleSessionComplete();
+          }}
+        />
       </div>
 
-      {/* Live transcript indicator */}
       {status === 'active' && transcriptLines.length > 0 && (
         <div className="transcript-ticker">
           <span className="transcript-dot" />
@@ -194,7 +165,6 @@ export default function Session({ avatarId, survey, onSessionEnd }) {
         </div>
       )}
 
-      {/* Controls */}
       {status === 'active' && (
         <div className="session-controls">
           <button className="btn btn-danger" onClick={handleEndEarly}>
