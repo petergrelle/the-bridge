@@ -69,6 +69,7 @@ export async function handler(event) {
         method: 'POST',
         headers: {
           'Authorization': `Bearer ${sessionKey}`,
+          'Content-Type': 'application/json',
           'X-Runway-Version': '2024-11-06',
         },
       }
