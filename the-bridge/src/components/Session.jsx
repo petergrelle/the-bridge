@@ -149,9 +149,13 @@ export default function Session({ avatarId, survey, onSessionEnd }) {
 
       {/* ─── Runway Avatar Area ─── */}
       <div className="session-avatar-area">
-        {status === 'connecting' && (
-
-        )}
+          {status === 'connecting' && (
+            <div className="connecting-overlay">
+              <div className="scoring-spinner" />
+              <p>Connecting to The Bridge...</p>
+              <p className="connecting-hint">Make sure your microphone is enabled.</p>
+            </div>
+          )}
 
 <AvatarCall
   avatarId={avatarId}
