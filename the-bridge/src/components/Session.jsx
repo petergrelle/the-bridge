@@ -2,8 +2,8 @@ import React, { useState, useEffect, useRef, useCallback } from 'react';
 
 // NOTE: If you're using the Runway React SDK's AvatarCall component,
 // uncomment the import below and use Option A in the render.
-// import { AvatarCall } from '@runwayml/avatars-react';
-// import '@runwayml/avatars-react/styles.css';
+import { AvatarCall } from '@runwayml/avatars-react';
+import '@runwayml/avatars-react/styles.css';
 
 const SESSION_DURATION = 5 * 60; // 5 minutes in seconds
 
@@ -150,38 +150,19 @@ export default function Session({ avatarId, survey, onSessionEnd }) {
       {/* ─── Runway Avatar Area ─── */}
       <div className="session-avatar-area">
         {status === 'connecting' && (
-          <div className="connecting-overlay">
-            <div className="scoring-spinner" />
-            <p>Connecting to The Bridge...</p>
-            <p className="connecting-hint">Make sure your microphone is enabled.</p>
-            {/*
-              AUTO-CONNECT: Remove this button and call handleSessionReady()
-              from the AvatarCall onConnect callback once you wire in the SDK.
-            */}
-            <button className="btn btn-primary" onClick={handleSessionReady} style={{ marginTop: '1.5rem' }}>
-              Simulate Session Start
-            </button>
-          </div>
+
         )}
 
-        {/*
-          ════════════════════════════════════════════════
-          RUNWAY SDK INTEGRATION — OPTION A (Recommended)
-          ════════════════════════════════════════════════
-          
-          Uncomment this block and remove the placeholder above.
-          The AvatarCall component handles all WebRTC.
-
-          <AvatarCall
-            avatarId={avatarId}
-            connectUrl="/api/create-session"
-            onConnect={handleSessionReady}
-            onEnd={handleSessionComplete}
-            onError={(err) => {
-              console.error('Avatar error:', err);
-              handleSessionComplete();
-            }}
-          />
+<AvatarCall
+  avatarId={avatarId}
+  connectUrl="/api/create-session"
+  onConnect={handleSessionReady}
+  onEnd={handleSessionComplete}
+  onError={(err) => {
+    console.error('Avatar error:', err);
+    handleSessionComplete();
+  }}
+/>
 
           ════════════════════════════════════════════════
         */}
