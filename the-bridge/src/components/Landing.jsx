@@ -1,6 +1,6 @@
 import React from 'react';
 
-export default function Landing({ onStart }) {
+export default function Landing({ onStart, error, hasRainCheck }) {
   return (
     <div className="screen landing-screen">
       <div className="landing-content">
@@ -27,11 +27,29 @@ export default function Landing({ onStart }) {
             <span>Get scored on reasoning, empathy, and resilience</span>
           </div>
         </div>
-        <button className="btn btn-primary" onClick={onStart}>
-          Start a Sparring Session
-        </button>
+
+        {error && (
+          <div className="landing-error">
+            {error}
+          </div>
+        )}
+
+        {hasRainCheck ? (
+          <div className="rain-check-banner">
+            <p className="rain-check-text">You have a rain check from a previous session that couldn't connect.</p>
+            <button className="btn btn-primary" onClick={onStart}>
+              Use Rain Check — Start Free Session
+            </button>
+          </div>
+        ) : (
+          <button className="btn btn-primary" onClick={onStart}>
+            Start a Sparring Session — $1.99
+          </button>
+        )}
+
         <p className="landing-disclaimer">
-          This is an AI simulation. No data is stored. You can leave anytime.
+          This is an AI simulation. No data is stored. You can leave anytime.<br />
+          Rain checks are issued if sessions are at capacity.
         </p>
       </div>
     </div>
