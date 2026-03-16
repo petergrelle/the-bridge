@@ -9,95 +9,122 @@ export default function Session({ avatarId, survey, onSessionEnd }) {
   const [status, setStatus] = useState('connecting');
   const [showAvatar, setShowAvatar] = useState(true);
   const [transcriptLines, setTranscriptLines] = useState([]);
-  const recognitionRef = useRef(null);
   const timerRef = useRef(null);
-  const transcriptRef = useRef([]);
   const sessionActiveRef = useRef(false);
   const hasEndedRef = useRef(false);
+  const sessionIdRef = useRef(null);
 
-  // ─── Web Speech API transcript capture ───
-  const startTranscription = useCallback(() => {
-    const SpeechRecognition =
-      window.SpeechRecognition || window.webkitSpeechRecognition;
+  // ─── Capture session ID from the create-session response ───
+  // We intercept the fetch to grab the sessionId for later transcript retrieval
+  useEffect(() => {
+    const originalFetch = window.fetch;
+    window.fetch = async (...args) => {
+      const response = await originalFetch(...args);
 
-    if (!SpeechRecognition) {
-      console.warn('Web Speech API not supported');
-      return;
-    }
-
-    const recognition = new SpeechRecognition();
-    recognition.continuous = true;
-    recognition.interimResults = false;
-    recognition.lang = 'en-US';
-
-    recognition.onresult = (event) => {
-      for (let i = event.resultIndex; i < event.results.length; i++) {
-        if (event.results[i].isFinal) {
-          const text = event.results[i][0].transcript.trim();
-          if (text) {
-            const line = { speaker: 'USER', text, timestamp: Date.now() };
-            transcriptRef.current.push(line);
-            setTranscriptLines((prev) => [...prev, line]);
-            console.log('Transcript captured:', text);
+      // Clone the response so we can read it without consuming it
+      if (typeof args[0] === 'string' && args[0].includes('create-session')) {
+        const clone = response.clone();
+        try {
+          const data = await clone.json();
+          if (data.sessionId) {
+            sessionIdRef.current = data.sessionId;
+            console.log('Captured session ID:', data.sessionId);
           }
+        } catch (e) {
+          // ignore parse errors
         }
       }
+      return response;
     };
 
-    recognition.onerror = (event) => {
-      console.warn('Speech recognition error:', event.error);
-      if (event.error === 'no-speech' || event.error === 'aborted') {
-        if (sessionActiveRef.current) {
-          try { recognition.start(); } catch (e) { /* already running */ }
-        }
-      }
+    return () => {
+      window.fetch = originalFetch;
     };
-
-    recognition.onend = () => {
-      if (sessionActiveRef.current) {
-        try { recognition.start(); } catch (e) { /* already running */ }
-      }
-    };
-
-    recognition.start();
-    recognitionRef.current = recognition;
   }, []);
 
-  const stopTranscription = useCallback(() => {
-    sessionActiveRef.current = false;
-    if (recognitionRef.current) {
-      try { recognitionRef.current.stop(); } catch (e) { /* ok */ }
-      recognitionRef.current = null;
+  // ─── Fetch transcript from Runway API ───
+  const fetchRunwayTranscript = useCallback(async () => {
+    const sid = sessionIdRef.current;
+    if (!sid) {
+      console.warn('No session ID available for transcript fetch');
+      return null;
+    }
+
+    console.log('Fetching Runway transcript for session:', sid);
+
+    try {
+      const res = await fetch('/api/get-transcript', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ sessionId: sid }),
+      });
+
+      if (!res.ok) {
+        console.error('Transcript fetch failed:', res.status);
+        return null;
+      }
+
+      const data = await res.json();
+      console.log('Runway session data:', JSON.stringify(data).slice(0, 500));
+
+      // The transcript could be in various fields - check all possibilities
+      if (data.transcript) {
+        // Could be a string or an array of objects
+        if (typeof data.transcript === 'string') {
+          return data.transcript;
+        }
+        if (Array.isArray(data.transcript)) {
+          return data.transcript
+            .map((t) => `${t.speaker || t.role || 'UNKNOWN'}: ${t.text || t.content || ''}`)
+            .join('\n');
+        }
+        return JSON.stringify(data.transcript);
+      }
+
+      if (data.messages) {
+        return data.messages
+          .map((m) => `${m.role || m.speaker || 'UNKNOWN'}: ${m.content || m.text || ''}`)
+          .join('\n');
+      }
+
+      if (data.conversation) {
+        if (typeof data.conversation === 'string') return data.conversation;
+        return JSON.stringify(data.conversation);
+      }
+
+      // If we can't find a known transcript field, return the whole thing for debugging
+      console.log('No known transcript field found. Full data:', JSON.stringify(data));
+      return null;
+    } catch (err) {
+      console.error('Error fetching transcript:', err);
+      return null;
     }
   }, []);
 
   // ─── End session (called once only) ───
-  const endSession = useCallback(() => {
+  const endSession = useCallback(async () => {
     if (hasEndedRef.current) return;
     hasEndedRef.current = true;
 
-    console.log('Ending session, transcript lines:', transcriptRef.current.length);
-
-    stopTranscription();
+    console.log('Ending session...');
+    sessionActiveRef.current = false;
     clearInterval(timerRef.current);
 
-    // Unmount the AvatarCall component to kill the WebRTC connection
+    // Unmount AvatarCall to kill the WebRTC connection
     setShowAvatar(false);
+    setStatus('ending');
 
-    const fullTranscript = transcriptRef.current
-      .map((line) => `${line.speaker}: ${line.text}`)
-      .join('\n');
+    // Wait a moment for Runway to process, then fetch transcript
+    await new Promise((r) => setTimeout(r, 2000));
 
-    console.log('Full transcript:', fullTranscript || '(empty)');
+    const transcript = await fetchRunwayTranscript();
+    console.log('Retrieved transcript:', transcript ? transcript.slice(0, 200) : '(none)');
 
-    // Give a moment for cleanup, then transition
-    setTimeout(() => {
-      onSessionEnd(
-        fullTranscript ||
-          '[No transcript captured — Web Speech API may not be supported in this browser]'
-      );
-    }, 1000);
-  }, [stopTranscription, onSessionEnd]);
+    onSessionEnd(
+      transcript ||
+        '[No transcript available — session data may still be processing]'
+    );
+  }, [fetchRunwayTranscript, onSessionEnd]);
 
   // ─── Timer ───
   useEffect(() => {
@@ -122,8 +149,7 @@ export default function Session({ avatarId, survey, onSessionEnd }) {
     console.log('Avatar connected — session active');
     setStatus('active');
     sessionActiveRef.current = true;
-    startTranscription();
-  }, [startTranscription]);
+  }, []);
 
   const handleAvatarEnd = useCallback(() => {
     console.log('AvatarCall onEnd fired');
@@ -142,10 +168,9 @@ export default function Session({ avatarId, survey, onSessionEnd }) {
   // Cleanup on unmount
   useEffect(() => {
     return () => {
-      stopTranscription();
       clearInterval(timerRef.current);
     };
-  }, [stopTranscription]);
+  }, []);
 
   const minutes = Math.floor(timeLeft / 60);
   const seconds = timeLeft % 60;
@@ -174,6 +199,13 @@ export default function Session({ avatarId, survey, onSessionEnd }) {
           </div>
         )}
 
+        {status === 'ending' && (
+          <div className="connecting-overlay">
+            <div className="scoring-spinner" />
+            <p>Session complete — retrieving transcript...</p>
+          </div>
+        )}
+
         {showAvatar && (
           <AvatarCall
             avatarId={avatarId}
@@ -184,16 +216,6 @@ export default function Session({ avatarId, survey, onSessionEnd }) {
           />
         )}
       </div>
-
-      {status === 'active' && transcriptLines.length > 0 && (
-        <div className="transcript-ticker">
-          <span className="transcript-dot" />
-          <span className="transcript-last">
-            {transcriptLines[transcriptLines.length - 1]?.text.slice(0, 80)}
-            {transcriptLines[transcriptLines.length - 1]?.text.length > 80 ? '...' : ''}
-          </span>
-        </div>
-      )}
 
       {status === 'active' && (
         <div className="session-controls">
