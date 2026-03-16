@@ -83,7 +83,12 @@ export async function handler(event) {
     return {
       statusCode: 200,
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(credentials),
+      body: JSON.stringify({
+        serverUrl: credentials.url || credentials.serverUrl,
+        token: credentials.token,
+        roomName: credentials.roomName,
+        sessionId,
+      }),
     };
   } catch (err) {
     console.error('Session creation error:', err);
