@@ -19,10 +19,11 @@ export default function App() {
   // ─── Check URL for Whop redirect on mount ───
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
-    const membershipId = params.get('membership_id') || params.get('id');
+    const paymentId = params.get('payment_id') || params.get('receipt_id');
+    const checkoutStatus = params.get('checkout_status') || params.get('status');
+    const membershipId = params.get('membership_id') || paymentId;
 
-    if (membershipId) {
-      // User just came back from Whop checkout
+    if (membershipId && checkoutStatus === 'success') {
       window.history.replaceState({}, '', window.location.pathname);
       validatePayment(membershipId);
     }
