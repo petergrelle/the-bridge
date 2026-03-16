@@ -76,6 +76,9 @@ Topic: ${survey.topic}
 Position: ${survey.position}
 Self-reported intensity: ${survey.intensity}
 
+IMPORTANT NOTE ABOUT THE TRANSCRIPT:
+The transcript below was captured via browser speech recognition, which labels ALL speech as "USER" — including both the human participant AND the AI avatar's responses. You must infer who is speaking from context. The AI avatar asks Socratic questions, reflects back what the user says, and maintains a calm probing tone. The human participant states opinions, responds to challenges, and may show emotional reactions. Separate the speakers yourself before scoring.
+
 TRANSCRIPT:
 ${transcript}`;
 
