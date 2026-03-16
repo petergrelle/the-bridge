@@ -70,7 +70,7 @@ function CallUI({ timeLeft, survey, onEnd, transcriptLines }) {
   );
 }
 
-export default function Session({ avatarId, survey, onSessionEnd }) {
+export default function Session({ avatarId, survey, onSessionEnd, onCapacityError }) {
   const [phase, setPhase] = useState('init');
   const [credentials, setCredentials] = useState(null);
   const [timeLeft, setTimeLeft] = useState(SESSION_DURATION);
@@ -81,7 +81,7 @@ export default function Session({ avatarId, survey, onSessionEnd }) {
   const recognitionRef = useRef(null);
   const transcriptRef = useRef([]);
 
-  // ─── Web Speech API for transcript capture ───
+  // ─── Web Speech API ───
   const startTranscription = useCallback(() => {
     const SpeechRecognition =
       window.SpeechRecognition || window.webkitSpeechRecognition;
@@ -123,7 +123,6 @@ export default function Session({ avatarId, survey, onSessionEnd }) {
     };
 
     recognition.onend = () => {
-      console.log('Speech recognition ended, restarting...');
       if (!hasEndedRef.current) {
         setTimeout(() => {
           if (!hasEndedRef.current) {
@@ -169,16 +168,12 @@ export default function Session({ avatarId, survey, onSessionEnd }) {
 
     console.log('Full transcript:', fullTranscript || '(empty)');
 
-    // If we got transcript from Web Speech API, use it
     if (fullTranscript) {
-      console.log('Using Web Speech API transcript');
       onSessionEnd(fullTranscript);
       return;
     }
 
-    // Fallback: try to get transcript from Runway
-    console.log('No Web Speech transcript — trying Runway API...');
-    onSessionEnd('[No transcript captured. For best results, use Chrome and allow microphone access. The Web Speech API needs to run alongside the avatar conversation.]');
+    onSessionEnd('[No transcript captured. For best results, use Chrome and allow microphone access.]');
   }, [onSessionEnd, stopTranscription]);
 
   // ─── Provision session ───
@@ -196,9 +191,35 @@ export default function Session({ avatarId, survey, onSessionEnd }) {
         });
 
         if (!res.ok) {
-          const err = await res.text();
-          console.error('Create session failed:', res.status, err);
-          onSessionEnd('[Session creation failed: ' + err + ']');
+          const errText = await res.text();
+          console.error('Create session failed:', res.status, errText);
+
+          // ─── Check for capacity error ───
+          try {
+            const errData = JSON.parse(errText);
+            if (
+              errData.error === 'Your daily task limit has been reached.' ||
+              (typeof errData === 'string' && errData.includes('daily task limit')) ||
+              res.status === 429
+            ) {
+              console.log('Capacity limit detected — issuing rain check');
+              if (onCapacityError) {
+                onCapacityError();
+                return;
+              }
+            }
+          } catch (e) {
+            // Not JSON, check raw text
+            if (errText.includes('daily task limit') || errText.includes('rate limit')) {
+              console.log('Capacity limit detected (text) — issuing rain check');
+              if (onCapacityError) {
+                onCapacityError();
+                return;
+              }
+            }
+          }
+
+          onSessionEnd('[Session creation failed: ' + errText + ']');
           return;
         }
 
@@ -212,11 +233,8 @@ export default function Session({ avatarId, survey, onSessionEnd }) {
         });
         setPhase('live');
 
-        // Start transcription BEFORE the avatar connects
-        // This gives Web Speech API time to get mic access first
         startTranscription();
 
-        // Start timer
         console.log('Starting 5-minute timer');
         const startTime = Date.now();
         timerRef.current = setInterval(() => {
@@ -230,7 +248,6 @@ export default function Session({ avatarId, survey, onSessionEnd }) {
           }
         }, 1000);
 
-        // Hard timeout
         timeoutRef.current = setTimeout(() => {
           console.log('5-minute hard timeout — ending session');
           endSession();
@@ -243,7 +260,7 @@ export default function Session({ avatarId, survey, onSessionEnd }) {
     }
 
     provision();
-  }, [phase, avatarId, onSessionEnd, endSession, startTranscription]);
+  }, [phase, avatarId, survey, onSessionEnd, onCapacityError, endSession, startTranscription]);
 
   // Cleanup
   useEffect(() => {
