@@ -778,3 +778,77 @@ html, body, #root {
   .screen { padding: 1.25rem; }
   .grade-card { padding: 0.875rem; }
 }
+/* ─── Additional styles for payment gating ─── */
+/* Append these to the bottom of your existing index.css */
+
+.landing-error {
+  background: rgba(231, 76, 60, 0.1);
+  border: 1px solid rgba(231, 76, 60, 0.2);
+  border-radius: var(--radius-sm);
+  padding: 0.875rem 1rem;
+  color: var(--red);
+  font-size: 0.9rem;
+  margin-bottom: 1.5rem;
+  text-align: left;
+}
+
+.rain-check-banner {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.75rem;
+  background: var(--accent-subtle);
+  border: 1px solid rgba(201, 123, 58, 0.25);
+  border-radius: var(--radius);
+  padding: 1.25rem;
+  margin-bottom: 1rem;
+}
+
+.rain-check-text {
+  font-size: 0.9rem;
+  color: var(--text-secondary);
+}
+
+.rain-check-card {
+  background: var(--bg-card);
+  border: 1px solid var(--bg-elevated);
+  border-radius: var(--radius);
+  padding: 1.5rem;
+  text-align: left;
+  margin-bottom: 1rem;
+}
+
+.rain-check-header {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  font-weight: 600;
+  font-size: 1.1rem;
+  margin-bottom: 0.75rem;
+}
+
+.rain-check-icon {
+  font-size: 1.25rem;
+}
+
+.rain-check-detail {
+  font-size: 0.9rem;
+  color: var(--text-secondary);
+  line-height: 1.6;
+  margin-bottom: 0.75rem;
+}
+
+.rain-check-meta {
+  display: flex;
+  gap: 1.5rem;
+  font-family: var(--font-mono);
+  font-size: 0.75rem;
+  color: var(--text-muted);
+  margin-bottom: 0.75rem;
+}
+
+.rain-check-saved {
+  font-size: 0.8rem;
+  color: var(--accent);
+  font-weight: 500;
+}
