@@ -113,9 +113,8 @@ export default function App() {
 
     // No rain check — redirect to Whop checkout
     if (WHOP_CHECKOUT_URL) {
-      // Add redirect URL so Whop sends them back after payment
-      const redirectUrl = window.location.origin + '?payment=complete';
-      window.location.href = WHOP_CHECKOUT_URL;
+      const redirectUrl = encodeURIComponent(window.location.origin);
+      window.location.href = `${WHOP_CHECKOUT_URL}?redirect_url=${redirectUrl}`;
     } else {
       // No Whop configured — go straight to survey (free mode / testing)
       setPhase('survey');
