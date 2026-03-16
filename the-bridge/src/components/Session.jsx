@@ -192,7 +192,7 @@ export default function Session({ avatarId, survey, onSessionEnd }) {
         const res = await fetch('/api/create-session', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ avatarId }),
+          body: JSON.stringify({ avatarId, survey }),
         });
 
         if (!res.ok) {
