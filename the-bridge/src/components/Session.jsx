@@ -9,16 +9,9 @@ import '@runwayml/avatars-react/styles.css';
 
 const SESSION_DURATION = 5 * 60;
 
-// ─── Inner component that uses the SDK hooks ───
-function CallUI({ onReady, onEnd, timeLeft, survey }) {
+function CallUI({ timeLeft, survey, onEnd }) {
   const { state, end } = useAvatarSession();
   const { isMicEnabled, toggleMic } = useLocalMedia();
-
-  useEffect(() => {
-    if (state === 'connected') {
-      onReady();
-    }
-  }, [state, onReady]);
 
   const minutes = Math.floor(timeLeft / 60);
   const seconds = timeLeft % 60;
@@ -39,13 +32,6 @@ function CallUI({ onReady, onEnd, timeLeft, survey }) {
       </div>
 
       <div className="session-avatar-area">
-        {(state === 'connecting' || state === 'idle') && (
-          <div className="connecting-overlay">
-            <div className="scoring-spinner" />
-            <p>Connecting to The Bridge...</p>
-            <p className="connecting-hint">Make sure your microphone is enabled.</p>
-          </div>
-        )}
         <AvatarVideo
           style={{
             width: '100%',
@@ -56,82 +42,44 @@ function CallUI({ onReady, onEnd, timeLeft, survey }) {
         />
       </div>
 
-      {state === 'connected' && (
-        <div className="session-controls">
-          <button className="btn btn-ghost" onClick={toggleMic} style={{ marginRight: '0.5rem' }}>
-            {isMicEnabled ? 'Mute' : 'Unmute'}
-          </button>
-          <button className="btn btn-danger" onClick={() => { end(); onEnd(); }}>
-            End Session Early
-          </button>
-        </div>
-      )}
+      <div className="session-controls">
+        <button className="btn btn-ghost" onClick={toggleMic} style={{ marginRight: '0.5rem' }}>
+          {isMicEnabled ? 'Mute' : 'Unmute'}
+        </button>
+        <button
+          className="btn btn-danger"
+          onClick={() => {
+            try { end(); } catch (e) { /* ok */ }
+            onEnd();
+          }}
+        >
+          End Session Early
+        </button>
+      </div>
     </div>
   );
 }
 
-// ─── Main Session component ───
 export default function Session({ avatarId, survey, onSessionEnd }) {
-  const [phase, setPhase] = useState('init'); // init | provisioning | live | ending | fetching
+  const [phase, setPhase] = useState('init');
   const [credentials, setCredentials] = useState(null);
   const [timeLeft, setTimeLeft] = useState(SESSION_DURATION);
   const timerRef = useRef(null);
+  const timeoutRef = useRef(null);
   const hasEndedRef = useRef(false);
   const sessionIdRef = useRef(null);
 
-  // ─── Step 1: Provision the session ourselves ───
-  useEffect(() => {
-    if (phase !== 'init') return;
-    setPhase('provisioning');
-
-    async function provision() {
-      try {
-        console.log('Provisioning session for avatar:', avatarId);
-        const res = await fetch('/api/create-session', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ avatarId }),
-        });
-
-        if (!res.ok) {
-          const err = await res.text();
-          console.error('Create session failed:', res.status, err);
-          onSessionEnd('[Session creation failed: ' + err + ']');
-          return;
-        }
-
-        const data = await res.json();
-        console.log('Session created. Keys:', Object.keys(data));
-        console.log('Session data:', JSON.stringify(data).slice(0, 300));
-
-        // Capture sessionId for transcript retrieval
-        sessionIdRef.current = data.sessionId;
-        console.log('Stored session ID:', data.sessionId);
-
-        setCredentials({
-          serverUrl: data.serverUrl,
-          token: data.token,
-          roomName: data.roomName,
-        });
-        setPhase('live');
-      } catch (err) {
-        console.error('Provisioning error:', err);
-        onSessionEnd('[Connection error: ' + err.message + ']');
-      }
-    }
-
-    provision();
-  }, [phase, avatarId, onSessionEnd]);
-
-  // ─── Step 2: Timer ───
   const endSession = useCallback(async () => {
     if (hasEndedRef.current) return;
     hasEndedRef.current = true;
     clearInterval(timerRef.current);
-    setPhase('fetching');
-    setCredentials(null); // unmount AvatarSession
+    clearTimeout(timeoutRef.current);
 
-    console.log('Session ended. Waiting for Runway to process transcript...');
+    console.log('Ending session...');
+    setPhase('fetching');
+    setCredentials(null);
+
+    console.log('Waiting 3 seconds for Runway to process...');
     await new Promise((r) => setTimeout(r, 3000));
 
     const sid = sessionIdRef.current;
@@ -157,9 +105,8 @@ export default function Session({ avatarId, survey, onSessionEnd }) {
 
       const data = await res.json();
       console.log('Runway session data keys:', Object.keys(data));
-      console.log('Full session data:', JSON.stringify(data).slice(0, 1000));
+      console.log('Full session data:', JSON.stringify(data).slice(0, 2000));
 
-      // Try to find transcript in various possible fields
       let transcript = null;
 
       if (data.transcript) {
@@ -182,34 +129,82 @@ export default function Session({ avatarId, survey, onSessionEnd }) {
           : JSON.stringify(data.conversation);
       }
 
-      console.log('Extracted transcript:', transcript ? transcript.slice(0, 300) : '(none)');
-      onSessionEnd(transcript || '[Transcript not yet available — check Runway dev portal]');
+      console.log('Extracted transcript:', transcript ? transcript.slice(0, 500) : '(none)');
+      onSessionEnd(transcript || '[Transcript not yet available — check Runway dev portal for session ' + sid + ']');
     } catch (err) {
       console.error('Transcript error:', err);
       onSessionEnd('[Error retrieving transcript: ' + err.message + ']');
     }
   }, [onSessionEnd]);
 
-  const handleReady = useCallback(() => {
-    console.log('Avatar connected — starting timer');
-    timerRef.current = setInterval(() => {
-      setTimeLeft((prev) => {
-        if (prev <= 1) {
-          clearInterval(timerRef.current);
-          endSession();
-          return 0;
-        }
-        return prev - 1;
-      });
-    }, 1000);
-  }, [endSession]);
-
-  // Cleanup
   useEffect(() => {
-    return () => clearInterval(timerRef.current);
+    if (phase !== 'init') return;
+    setPhase('provisioning');
+
+    async function provision() {
+      try {
+        console.log('Provisioning session for avatar:', avatarId);
+        const res = await fetch('/api/create-session', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ avatarId }),
+        });
+
+        if (!res.ok) {
+          const err = await res.text();
+          console.error('Create session failed:', res.status, err);
+          onSessionEnd('[Session creation failed: ' + err + ']');
+          return;
+        }
+
+        const data = await res.json();
+        console.log('Session created. Keys:', Object.keys(data));
+        console.log('Session data:', JSON.stringify(data).slice(0, 300));
+
+        sessionIdRef.current = data.sessionId;
+        console.log('Stored session ID:', data.sessionId);
+
+        setCredentials({
+          serverUrl: data.serverUrl,
+          token: data.token,
+          roomName: data.roomName,
+        });
+        setPhase('live');
+
+        console.log('Starting 5-minute timer now');
+        const startTime = Date.now();
+        timerRef.current = setInterval(() => {
+          const elapsed = Math.floor((Date.now() - startTime) / 1000);
+          const remaining = SESSION_DURATION - elapsed;
+          if (remaining <= 0) {
+            clearInterval(timerRef.current);
+            setTimeLeft(0);
+          } else {
+            setTimeLeft(remaining);
+          }
+        }, 1000);
+
+        timeoutRef.current = setTimeout(() => {
+          console.log('5-minute hard timeout reached — ending session');
+          endSession();
+        }, SESSION_DURATION * 1000);
+
+      } catch (err) {
+        console.error('Provisioning error:', err);
+        onSessionEnd('[Connection error: ' + err.message + ']');
+      }
+    }
+
+    provision();
+  }, [phase, avatarId, onSessionEnd, endSession]);
+
+  useEffect(() => {
+    return () => {
+      clearInterval(timerRef.current);
+      clearTimeout(timeoutRef.current);
+    };
   }, []);
 
-  // ─── Render ───
   if (phase === 'provisioning' || phase === 'init') {
     return (
       <div className="screen session-screen">
@@ -242,10 +237,9 @@ export default function Session({ avatarId, survey, onSessionEnd }) {
   return (
     <AvatarSession credentials={credentials} audio video>
       <CallUI
-        onReady={handleReady}
-        onEnd={endSession}
         timeLeft={timeLeft}
         survey={survey}
+        onEnd={endSession}
       />
     </AvatarSession>
   );
