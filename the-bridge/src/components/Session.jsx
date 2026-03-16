@@ -7,12 +7,15 @@ const SESSION_DURATION = 5 * 60;
 export default function Session({ avatarId, survey, onSessionEnd }) {
   const [timeLeft, setTimeLeft] = useState(SESSION_DURATION);
   const [status, setStatus] = useState('connecting');
+  const [showAvatar, setShowAvatar] = useState(true);
   const [transcriptLines, setTranscriptLines] = useState([]);
   const recognitionRef = useRef(null);
   const timerRef = useRef(null);
   const transcriptRef = useRef([]);
   const sessionActiveRef = useRef(false);
+  const hasEndedRef = useRef(false);
 
+  // ─── Web Speech API transcript capture ───
   const startTranscription = useCallback(() => {
     const SpeechRecognition =
       window.SpeechRecognition || window.webkitSpeechRecognition;
@@ -35,6 +38,7 @@ export default function Session({ avatarId, survey, onSessionEnd }) {
             const line = { speaker: 'USER', text, timestamp: Date.now() };
             transcriptRef.current.push(line);
             setTranscriptLines((prev) => [...prev, line]);
+            console.log('Transcript captured:', text);
           }
         }
       }
@@ -67,6 +71,35 @@ export default function Session({ avatarId, survey, onSessionEnd }) {
     }
   }, []);
 
+  // ─── End session (called once only) ───
+  const endSession = useCallback(() => {
+    if (hasEndedRef.current) return;
+    hasEndedRef.current = true;
+
+    console.log('Ending session, transcript lines:', transcriptRef.current.length);
+
+    stopTranscription();
+    clearInterval(timerRef.current);
+
+    // Unmount the AvatarCall component to kill the WebRTC connection
+    setShowAvatar(false);
+
+    const fullTranscript = transcriptRef.current
+      .map((line) => `${line.speaker}: ${line.text}`)
+      .join('\n');
+
+    console.log('Full transcript:', fullTranscript || '(empty)');
+
+    // Give a moment for cleanup, then transition
+    setTimeout(() => {
+      onSessionEnd(
+        fullTranscript ||
+          '[No transcript captured — Web Speech API may not be supported in this browser]'
+      );
+    }, 1000);
+  }, [stopTranscription, onSessionEnd]);
+
+  // ─── Timer ───
   useEffect(() => {
     if (status !== 'active') return;
 
@@ -74,7 +107,7 @@ export default function Session({ avatarId, survey, onSessionEnd }) {
       setTimeLeft((prev) => {
         if (prev <= 1) {
           clearInterval(timerRef.current);
-          handleSessionComplete();
+          endSession();
           return 0;
         }
         return prev - 1;
@@ -82,33 +115,31 @@ export default function Session({ avatarId, survey, onSessionEnd }) {
     }, 1000);
 
     return () => clearInterval(timerRef.current);
-  }, [status]);
+  }, [status, endSession]);
 
+  // ─── Callbacks for AvatarCall ───
   const handleSessionReady = useCallback(() => {
+    console.log('Avatar connected — session active');
     setStatus('active');
     sessionActiveRef.current = true;
     startTranscription();
   }, [startTranscription]);
 
-  const handleSessionComplete = useCallback(() => {
-    if (status === 'ending') return;
-    setStatus('ending');
-    stopTranscription();
-    clearInterval(timerRef.current);
+  const handleAvatarEnd = useCallback(() => {
+    console.log('AvatarCall onEnd fired');
+    endSession();
+  }, [endSession]);
 
-    const fullTranscript = transcriptRef.current
-      .map((line) => `${line.speaker}: ${line.text}`)
-      .join('\n');
-
-    setTimeout(() => {
-      onSessionEnd(fullTranscript || '[No transcript captured — Web Speech API may not be supported in this browser]');
-    }, 500);
-  }, [status, stopTranscription, onSessionEnd]);
+  const handleAvatarError = useCallback((err) => {
+    console.error('Avatar error:', err);
+    endSession();
+  }, [endSession]);
 
   const handleEndEarly = useCallback(() => {
-    handleSessionComplete();
-  }, [handleSessionComplete]);
+    endSession();
+  }, [endSession]);
 
+  // Cleanup on unmount
   useEffect(() => {
     return () => {
       stopTranscription();
@@ -143,16 +174,15 @@ export default function Session({ avatarId, survey, onSessionEnd }) {
           </div>
         )}
 
-        <AvatarCall
-          avatarId={avatarId}
-          connectUrl="/api/create-session"
-          onConnect={handleSessionReady}
-          onEnd={handleSessionComplete}
-          onError={(err) => {
-            console.error('Avatar error:', err);
-            handleSessionComplete();
-          }}
-        />
+        {showAvatar && (
+          <AvatarCall
+            avatarId={avatarId}
+            connectUrl="/api/create-session"
+            onConnect={handleSessionReady}
+            onEnd={handleAvatarEnd}
+            onError={handleAvatarError}
+          />
+        )}
       </div>
 
       {status === 'active' && transcriptLines.length > 0 && (
