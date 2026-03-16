@@ -77,29 +77,41 @@ export async function handler(event) {
     };
   }
 
-  try {
-    // Check if the membership is valid via Whop API
-    const res = await fetch(`https://api.whop.com/api/v2/memberships/${membershipId}`, {
-      headers: {
-        'Authorization': `Bearer ${whopApiKey}`,
-        'Content-Type': 'application/json',
-      },
-    });
+try {
+    // Try as payment ID first (pay_xxx format from checkout redirect)
+    let isValid = false;
 
-    if (!res.ok) {
-      console.error('Whop API error:', res.status);
-      return {
-        statusCode: 403,
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ valid: false, error: 'Invalid membership' }),
-      };
+    if (membershipId.startsWith('pay_')) {
+      const res = await fetch(`https://api.whop.com/api/v2/payments/${membershipId}`, {
+        headers: {
+          'Authorization': `Bearer ${whopApiKey}`,
+          'Content-Type': 'application/json',
+        },
+      });
+
+      if (res.ok) {
+        const payment = await res.json();
+        console.log('Payment status:', payment.status);
+        isValid = payment.status === 'paid' || payment.status === 'succeeded';
+      } else {
+        console.error('Whop payment check failed:', res.status);
+      }
+    } else {
+      const res = await fetch(`https://api.whop.com/api/v2/memberships/${membershipId}`, {
+        headers: {
+          'Authorization': `Bearer ${whopApiKey}`,
+          'Content-Type': 'application/json',
+        },
+      });
+
+      if (res.ok) {
+        const membership = await res.json();
+        console.log('Membership status:', membership.status);
+        isValid = membership.status === 'active' || membership.status === 'completed';
+      } else {
+        console.error('Whop membership check failed:', res.status);
+      }
     }
-
-    const membership = await res.json();
-    console.log('Membership status:', membership.status);
-
-    // Check membership is valid and belongs to our company
-    const isValid = membership.status === 'active' || membership.status === 'completed';
 
     return {
       statusCode: isValid ? 200 : 403,
