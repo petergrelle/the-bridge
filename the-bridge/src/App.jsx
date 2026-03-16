@@ -49,7 +49,7 @@ export default function App() {
       const res = await fetch('/api/validate-payment', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ membershipId }),
+        body: JSON.stringify({ membershipId, checkoutStatus: 'success' }),
       });
 
       const data = await res.json();
